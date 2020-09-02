@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator,EmptyPage
 from .models import SKU,GoodsCategory
 from .utils import get_breadcrumb
-from haystack.views import SearchView
+# from haystack.views import SearchView
 # Create your views here.
 
 
@@ -86,51 +86,21 @@ class HotGoodsView(View):
             'hot_skus': ret_list
         })
     
-
-class MySearchView(SearchView):
-    # 当前搜索是"短语精确搜索" —— 不会把用户的搜索词进行分词处理；
-
-    # 构建一个响应
-    def create_response(self):
-        # 默认SearchView搜索视图逻辑：先搜索出结果，再调用create_response函数构建响应
-
-        # 1、获取全文检索的结果
-        context = self.get_context()
-
-        # context['query'] 检索词
-        # context['paginator'] 分页器对象
-        # context['paginator'].count 数据量
-        # context['paginator'].num_pages 当前页
-        # context['page'].object_list 列表(SearchResult对象)
-        # SearchResult.object 被搜索到的SKU模型类对象
-
-        sku_list = []
-        # 2、从查询的结果context中提取查询到的sku商品数据
-        for search_result in context['page'].object_list:
-            # search_result: SearchResult对象
-            # search_result.object: SKU模型类对象
-            sku = search_result.object
-            sku_list.append({
-                'id': sku.id,
-                'name': sku.name,
-                'price': sku.price,
-                'default_image_url': sku.default_image_url.url,
-                'searchkey': context['query'],
-                'page_size': context['paginator'].per_page,
-                'count': context['paginator'].count
-            })
-
-
-        # sku_list = [
-        #     {
-        #         'id': 1,
-        #         'name': '苹果100',
-        #         'price': 10,
-        #         'default_image_url': 'http://image.meiduo.site:8888/group1/M00/00/02/CtM3BVrPB4GAWkTlAAGuN6wB9fU4220429',
-        #         'searchkey': '华为',
-        #         'page_size': 5,
-        #         'count': 12
-        #     }
-        # ]
-
-        return JsonResponse(sku_list, safe=False)
+# 搜索
+# class MySearchView(SearchView):
+#     def create_response(self):
+#         context = self.get_context()
+#         sku_list = []
+#         for search_result in context['page'].object_list:
+#             sku = search_result.object
+#             sku_list.append({
+#                 'id': sku.id,
+#                 'name': sku.name,
+#                 'price': sku.price,
+#                 'default_image_url': sku.default_image_url.url,
+#                 'searchkey': context['query'],
+#                 'page_size': context['paginator'].per_page,
+#                 'count': context['paginator'].count
+#             })
+#
+#         return JsonResponse(sku_list, safe=False)

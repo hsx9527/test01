@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 import sys
 import os
+import datetime
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +31,7 @@ SECRET_KEY = '0kd6o2f7kyuz!9w@ahze9ng)__phfyk!nz86k02ne3(il+rky='
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['www.meiduo.site']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -42,15 +43,20 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'users',
+    'users',#用户信息
     'corsheaders',#跨域
     'django_crontab',#定时器
-    'haystack',
+    # 'haystack',#搜索扩展模块
+    'rest_framework',#DRF框架应用
     'verifications',#图形验证,手机验证
     'oauth',#qq授权
     'areas',#区域
     'contents',#内容
     'goods',#商品
+    'carts',#购物车
+    'orders',#订单
+    'payment',#支付
+    'meiduo_admin',#美多管理站点
 ]
 
 MIDDLEWARE = [
@@ -97,9 +103,19 @@ DATABASES = {
         'USER': 'hsx', # 数据库用户名
         'PASSWORD': '123456', # 数据库用户密码
         'NAME': 'meiduo_mall'
-    }
+    },
+    # 'slave': {
+    #     'ENGINE': 'django.db.backends.mysql',
+    #     'HOST': '127.0.0.1', # 数据库主机
+    #     'PORT': 8306, # 数据库端口
+    #     'USER': 'root', # 数据库用户名
+    #     'PASSWORD': 'mysql', # 数据库用户密码
+    #     'NAME': 'meiduo_mall'
+    # }
 }
 
+# 指定数据库路由
+# DATABASE_ROUTERS = ['meiduo_mall.utils.db_router.MasterSlaveDBRouter']
 
 # Password validation
 # https://docs.djangoproject.com/en/2.2/ref/settings/#auth-password-validators
@@ -171,6 +187,20 @@ CACHES = {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }
     },
+    "history": { # 用户浏览历史, 存到 4 号库
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/4",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    },
+    "carts": {  # 购物车, 存到 5 号库
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/5",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    },
 }
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "session"
@@ -219,7 +249,9 @@ LOGGING = {
 
 CORS_ORIGIN_WHITELIST = [
     'http://127.0.0.1:8080',
-    'http://www.meiduo.site:8080'
+    'http://127.0.0.1:8081',
+    'http://www.meiduo.site:8080',
+    'http://www.meiduo.site:8081'
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -264,7 +296,7 @@ GENERATED_STATIC_HTML_FILES_DIR = os.path.join(
     'front_end_pc'
 )
 
-# 定时器任务---环境下的meiduo_mall,不需要系统绝对路径
+# 定时器任务
 CRONJOBS = [
     (
         '*/1 * * * *', # 每间隔1分钟
@@ -274,17 +306,48 @@ CRONJOBS = [
 ]
 
 # 链接es的接口/框架haystack
-HAYSTACK_CONNECTIONS = {
-    'default': {
-        'ENGINE': 'haystack.backends.elasticsearch_backend.ElasticsearchSearchEngine',
-        'URL': 'http://192.168.200.147:9200/', # Elasticsearch服务器ip地址，端口号固定为9200
-        'INDEX_NAME': 'meiduo_mall', # Elasticsearch建立的索引库的名称
-    },
-}
+# HAYSTACK_CONNECTIONS = {
+#     'default': {
+#         'ENGINE': 'haystack.backends.elasticsearch_backend.ElasticsearchSearchEngine',
+#         'URL': 'http://192.168.200.183:9200/', # Elasticsearch服务器ip地址，端口号固定为9200
+#         'INDEX_NAME': 'meiduo_mall', # Elasticsearch建立的索引库的名称
+#     },
+# }
 
-# 当添加、修改、删除数据时，自动生成索引
-HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
+# 当添加、修改、删除sku数据时，自动生成索引
+# HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
 
 
 # 决定每页显示数据条数:
 HAYSTACK_SEARCH_RESULTS_PER_PAGE = 5
+
+
+# 阿里支付配置参数
+ALIPAY_APPID = '2021000120606365'
+ALIPAY_DEBUG = True
+ALIPAY_URL = 'https://openapi.alipaydev.com/gateway.do'
+ALIPAY_RETURN_URL = "http://www.meiduo.site:8080/pay_success.html"
+
+
+# 对drf配置
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        # JWT身份认证
+        # 会自动在请求头中按照既定的格式提取token值，并校验；
+        # Authorization: JWT <签发的token值>
+        'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
+
+        'rest_framework.authentication.SessionAuthentication', # session认证
+        'rest_framework.authentication.BasicAuthentication', # 基础认证
+    ),
+}
+
+# jwt拓展配置
+JWT_AUTH = {
+    # jwt签发的有效期
+    'JWT_EXPIRATION_DELTA': datetime.timedelta(days=14),
+
+    # 重写默认构建响应数据,因为它只默认返回token
+    'JWT_RESPONSE_PAYLOAD_HANDLER':
+    'users.utils.my_jwt_response_payload_handler',
+}

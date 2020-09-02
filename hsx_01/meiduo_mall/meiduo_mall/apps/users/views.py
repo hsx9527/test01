@@ -1,10 +1,8 @@
 from django.shortcuts import render
-# Create your view
 from django.views import View
 from users.models import User
 from django.http import JsonResponse
 # =========================
-import json
 import re
 from django import http
 from django_redis import get_redis_connection
@@ -16,6 +14,7 @@ from meiduo_mall.utils.views import login_required
 from django.utils.decorators import method_decorator
 from celery_tasks.email.tasks import send_verify_email
 from .models import Address
+from carts.utils import merge_cart_cookie_to_redis
 
 class UsernameCountView(View):
     def get(self, request, username):
@@ -85,10 +84,11 @@ class RegisterView(View):
                                       'errmsg': 'allow格式有误'})
 
         # 8.sms_code检验 (链接redis数据库)
-        redis_conn = get_redis_connection('verify_code')
+        redis_conn = get_redis_connection('sms_code')
 
         # 9.从redis中取值
         sms_code_server = redis_conn.get('sms_%s' % mobile)
+        print(sms_code_server)
 
         # 10.判断该值是否存在
         if not sms_code_server:
@@ -117,8 +117,6 @@ class RegisterView(View):
 
 # ==============================================
 # 用户名登录后端逻辑
-
-
 class LoginView(View):
 
     def post(self, request):
@@ -136,7 +134,7 @@ class LoginView(View):
                                  'errmsg': '缺少必传参数'})
 
         # 3.验证是否能够登录
-        user = authenticate(username=username,
+        user = authenticate(request,username=username,
                             password=password)
 
         # 判断是否为空,如果为空,返回
@@ -160,12 +158,12 @@ class LoginView(View):
                              'errmsg': 'ok'})
         # 设置cookie
         response.set_cookie('username', username,max_age=3600*24*14)
-
+        # 登陆成功，返回响应之前，合并购物车
+        response = merge_cart_cookie_to_redis(request, user, response)
         return response
 
+
 # 退出登录
-
-
 class LogoutView(View):
     """定义退出登录的接口"""
 
@@ -565,3 +563,77 @@ class ChangePasswordView(View):
         response = JsonResponse({'code': 0, 'errmsg': 'ok'})
         response.delete_cookie('username')
         return response
+
+
+# 用户浏览商品记录
+from django.utils import timezone
+from goods.models import SKU,GoodsVisitCount
+class UserBrowseHistory(View):
+
+    @method_decorator(login_required)
+    def post(self, request):
+        # 记录用户历史
+        # 1、获取请求参数
+        data = json.loads(request.body.decode())
+        sku_id = data.get('sku_id')
+
+        user = request.user
+        # 2、加入用户历史记录redis列表中
+        conn = get_redis_connection('history')
+        p = conn.pipeline()
+        # 2.1 去重
+        p.lrem('history_%s'%user.id, 0, sku_id)
+        # 2.2 左侧插入
+        p.lpush('history_%s'%user.id, sku_id)
+        # 2.3 截断列表(保证最多5条)
+        p.ltrim('history_%s'%user.id, 0, 4)
+        p.execute()
+
+        # 补充：当前用户访问的sku的类别商品访问量累加
+        sku = SKU.objects.get(pk=sku_id)
+        category = sku.category
+        try:
+            good_visit = GoodsVisitCount.objects.get(
+                category_id=category.id,
+                create_time__gte=timezone.localtime().replace(hour=0, minute=0, second=0)
+            )
+        except GoodsVisitCount.DoesNotExist as e:
+            # 当日该类别历史记录不存在
+            GoodsVisitCount.objects.create(
+                count=1,
+                category=category,
+            )
+        else:
+            good_visit.count += 1
+            good_visit.save()
+
+        # 3、构建响应
+        return JsonResponse({'code': 0, 'errmsg': 'ok'})
+
+
+    @method_decorator(login_required)
+    def get(self, request):
+        # 展示用户浏览历史
+        user = request.user
+
+        conn = get_redis_connection('history')
+        # 1、读取redis浏览历史
+        # sku_ids = [b'4', b'5', b'11']
+        sku_ids = conn.lrange('history_%s'%user.id, 0, -1)
+        # 2、获取sku商品信息
+        # sku_ids = [int(x) for x in sku_ids]
+        skus = SKU.objects.filter(id__in=sku_ids)
+        # 3、构建响应
+        sku_list = []
+        for sku in skus:
+            sku_list.append({
+                'id': sku.id,
+                'name': sku.name,
+                'price': sku.price,
+                'default_image_url': sku.default_image_url.url
+            })
+        return JsonResponse({
+            'code': 0,
+            'errmsg': 'ok',
+            'skus': sku_list
+        })

@@ -11,6 +11,7 @@ from django.contrib.auth import login
 from itsdangerous import TimedJSONWebSignatureSerializer
 import json,re
 from django_redis import get_redis_connection
+from carts.utils import merge_cart_cookie_to_redis
 # oauth视图模块
 
 # 加密函数
@@ -83,6 +84,7 @@ class QQUserView(View):
         login(request, user) # 状态保持
         response = JsonResponse({'code':0, 'errmsg': 'ok'})
         response.set_cookie('username', user.username, max_age=3600*24*14)
+        response = merge_cart_cookie_to_redis(request, user, response)
         return response
 
     # 前端绑定发来的加密openid
@@ -139,6 +141,7 @@ class QQUserView(View):
             login(request, user)
             response = JsonResponse({'code': 0, 'errmsg': 'ok'})
             response.set_cookie('username', user.username, max_age=3600*24*14)
+            response = merge_cart_cookie_to_redis(request, user, response)
             return response
 
 
@@ -151,6 +154,7 @@ class QQUserView(View):
         login(request, user)
         response = JsonResponse({'code': 0, 'errmsg': 'ok'})
         response.set_cookie('username', user.username, max_age=3600 * 24 * 14)
+        response = merge_cart_cookie_to_redis(request, user, response)
         return response
 
 # QQ登陆
