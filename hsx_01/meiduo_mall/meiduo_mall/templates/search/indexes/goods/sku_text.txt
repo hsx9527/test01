@@ -1,4 +1,6 @@
-
+#构建索引匹配
+#路径尽可能与索引包匹配目录相同
+#命令生成新的索引匹配: python manage.py rebuild_index
 
 {{ object.id }}
 {{ object.name }}
